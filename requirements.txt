@@ -1,0 +1,16 @@
+azure-ai-formrecognizer==3.3.3
+azure-common==1.1.28
+azure-core==1.30.2
+certifi==2024.6.2
+charset-normalizer==3.3.2
+idna==3.7
+isodate==0.6.1
+msrest==0.7.1
+oauthlib==3.2.2
+PyMuPDF==1.24.5
+PyMuPDFb==1.24.3
+requests==2.32.3
+requests-oauthlib==2.0.0
+six==1.16.0
+typing-extensions==4.12.2
+urllib3==2.2.1
