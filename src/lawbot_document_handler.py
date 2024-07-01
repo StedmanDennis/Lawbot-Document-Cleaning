@@ -40,7 +40,7 @@ class LawBotDocument:
     base_analyze_result: Union[AnalyzeResult, None]
     cleaned_analyze_result: Union[AnalyzeResult, None]
 
-    def __init__(self, filePath):
+    def __init__(self, filePath: str):
         print(f'init: {filePath}')
         self.base_doc_path = Path(filePath)
         if not self.base_doc_path.is_relative_to(self.default_workspace_path):
@@ -53,7 +53,6 @@ class LawBotDocument:
         self.cleaned_analyze_result_path = self.base_analyze_result_path.with_stem(f'{self.base_analyze_result_path.stem}{self.cleaned_name_tail}')
         self.analyze_result = None
         self.cleaned_analyze_result = None
-        self.__create_page_images()
 
     @classmethod
     def prep_workspace_from_zip(cls, zipPath: str):
@@ -67,19 +66,30 @@ class LawBotDocument:
             zip_documents = zip_file.filelist
             zip_documents_count = len(zip_documents)
             print('Copying documents to workspace')
+            added_file_names = []
             for i, file_info in enumerate(zip_documents):
                 lawbot_file_source = zip_file.open(file_info, 'r')
                 file_info_path_object = Path(file_info.filename)
                 #https://www.mtu.edu/umc/services/websites/writing/characters-avoid/
                 #replace a sequence of 2 or more '.' with just one
                 #strip because some names ended with white space
-                new_stem = re.sub(r'\.{2,}', '.', file_info_path_object.stem).strip()
+                new_stem = re.sub(r'\.{2,}', '.', file_info_path_object.stem)
+                #replace if ends with number between brackets, indicating duplcate
+                new_stem = re.sub(r'\(\d+\)$', '', new_stem).strip()
+                if new_stem in added_file_names:
+                    print(f'Duplicate file name, skipping')
+                    continue
                 file_info_path_object = file_info_path_object.with_stem(f'{file_info_path_object.parent}_{new_stem}')
                 lawbot_file_workspace_folder = lawbot_workspace_documents_folder.joinpath(file_info_path_object.stem)
                 lawbot_file_workspace_folder.mkdir()
                 lawbot_file_workspace_folder.joinpath('page_images').mkdir()
                 lawbot_file_target = lawbot_file_workspace_folder.joinpath(file_info_path_object.name)
                 shutil.copyfileobj(lawbot_file_source, lawbot_file_target.open('wb'))
+                try:
+                    LawBotDocument(lawbot_file_target.as_posix()).__create_page_images()
+                except:
+                    pass
+                added_file_names.append(new_stem)
                 display_progress(i+1, zip_documents_count)
         else:
             print('Lawbot workspace already exists, skipping workspace creation')
