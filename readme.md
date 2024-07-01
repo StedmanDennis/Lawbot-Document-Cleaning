@@ -25,7 +25,7 @@ Will return a list of LawbotDocument instances for all documents found in a work
 A LawBotDocument instance has methods to analyze a document, create page images for labeling, generating a cleaned document using bounding boxes from labeling and more.
 
 To use the Azure Document Intelligence methods, you will need both the endpoint and key for the azure resource.
-When you have the endpoint and key, add them to your environment variables as LAWBOT_DI_KEY and LAWBOT_DI_ENDPOINT .
+When you have the endpoint and key, add them to your environment variables as LAWBOT_DI_KEY and LAWBOT_DI_ENDPOINT.
 
 Some methods of a LawBotDocument instance can operate on either the original document or the cleaned version
 Use the DocumentVersion enumeration class to identify the the document to operate on.

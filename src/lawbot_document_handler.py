@@ -2,12 +2,12 @@ import json
 import pymupdf
 from enum import Enum
 from typing import List, Union, ClassVar #remove this when upgraded to python 9.10+ and use | instead
-from src.utils import display_progress
+from utils import display_progress
 from pathlib import Path
 from zipfile import ZipFile
 import shutil
 import re
-from src.document_intelligence import document_intelligence_extract
+from document_intelligence import document_intelligence_extract
 from azure.ai.formrecognizer import AnalyzeResult
 import xml.etree.ElementTree as ET
 
