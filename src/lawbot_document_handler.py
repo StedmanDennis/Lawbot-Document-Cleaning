@@ -5,7 +5,6 @@ from typing import List, Union, ClassVar #remove this when upgraded to python 9.
 from utils import display_progress
 from pathlib import Path
 from zipfile import ZipFile
-import shutil
 import re
 from document_intelligence import document_intelligence_extract
 from azure.ai.formrecognizer import AnalyzeResult
@@ -84,7 +83,8 @@ class LawBotDocument:
                 lawbot_file_workspace_folder.mkdir()
                 lawbot_file_workspace_folder.joinpath('page_images').mkdir()
                 lawbot_file_target = lawbot_file_workspace_folder.joinpath(file_info_path_object.name)
-                shutil.copyfileobj(lawbot_file_source, lawbot_file_target.open('wb'))
+                file = lawbot_file_target.open('wb')
+                file.write(lawbot_file_source.read())
                 try:
                     LawBotDocument(lawbot_file_target.as_posix()).__create_page_images()
                 except:
