@@ -4,10 +4,10 @@ from pathlib import Path
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
 
-key_env_var_name: str = 'LAWBOT_DI_KEY'
-endpoint_env_var_name: str = 'LAWBOT_DI_ENDPOINT' 
-key = os.environ.get(key_env_var_name)
-endpoint = os.environ.get(endpoint_env_var_name)
+key_env_var_name: str = 'DOCUMENT_INTELLIGENCE_KEY'
+endpoint_env_var_name: str = 'DOCUMENT_INTELLIGENCE_ENDPOINT' 
+key = os.getenv(key_env_var_name)
+endpoint = os.getenv(endpoint_env_var_name)
 
 def document_intelligence_extract(filePath: Path):
     if key == None:
