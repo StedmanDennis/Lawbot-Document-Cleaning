@@ -1,4 +1,6 @@
 env
+.env
+.mypy_cache
 .vscode
 __pycache__
 non_release
