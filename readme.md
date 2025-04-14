@@ -2,10 +2,9 @@ This repository hosts the python scripts to aid in processing the documents of t
 
 Setup:
 <!--Virtual environment guide https://www.youtube.com/watch?v=Y21OR1OPC9A-->
-Create a python virtual environment
-Activate the virtual environment
-
-run pip install requirements.txt to install dependencies
+python -m venv env - Create a python virtual environment
+env\Scripts\activate - Activate the virtual environment
+pip install requirements.txt - Install dependencies
 
 Download zip file from *Place zipfile URI here*
 
