@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pymupdf
+from pymupdf.utils import get_pixmap
 from typing import Literal
 from utils import print_progress_bar
 from pathlib import Path
@@ -10,6 +11,10 @@ from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.core.credentials import AzureKeyCredential
 from inference import get_model
 import supervision as sv
+from supervision.detection.core import Detections
+from supervision.geometry.core import Rect
+from supervision.draw.utils import draw_filled_rectangle
+from supervision.draw.color import Color
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -68,8 +73,7 @@ def create_document_page_images(documentPath: Path, outputFolderPath: Path):
         page_image_path = outputFolderPath.joinpath(f'page_{page_num}').with_suffix('.png')
         if not page_image_path.exists():
             page = pdf_doc.load_page(page_index)
-            pix_map: pymupdf.Pixmap = page.get_pixmap() # type: ignore
-            pix_map.save(page_image_path)
+            get_pixmap(page).save(page_image_path)
         else:
             print(f'Page {page_num} image already exists, skipping.')
         print_progress_bar(page_num, page_count)
@@ -81,11 +85,11 @@ def clean_page(imagePath: Path, confidence: float = 0.08):
     image = Image.open(imagePath)
     imagedata = np.array(image, copy=True)
     results = model.infer(image,confidence=confidence)[0]
-    detections = sv.Detections.from_inference(results) # type: ignore
+    detections = Detections.from_inference(results)
     for detection in detections.xyxy:
         # annotate the image with the detections
-        rect=sv.Rect.from_xyxy(detection) # type: ignore
-        cleanedImageData=sv.draw_filled_rectangle(scene=imagedata,rect=rect,color=sv.Color.from_hex("#FFFFFF")) # type: ignore
+        rect=Rect.from_xyxy(detection)
+        cleanedImageData=draw_filled_rectangle(scene=imagedata,rect=rect,color=Color.from_hex("#FFFFFF")) 
         cleanedImage = Image.fromarray(cleanedImageData)
     return cleanedImage
 
