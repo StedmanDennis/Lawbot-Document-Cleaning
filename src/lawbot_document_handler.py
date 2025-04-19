@@ -10,7 +10,6 @@ import re
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.core.credentials import AzureKeyCredential
 from inference import get_model
-import supervision as sv
 from supervision.detection.core import Detections
 from supervision.geometry.core import Rect
 from supervision.draw.utils import draw_filled_rectangle
@@ -48,7 +47,7 @@ class LawbotWorkspace:
                 #strip because some names ended with white space
                 new_stem = new_stem.strip()
                 if new_stem in added_file_names:
-                    print(f'Duplicate file name: {new_stem}, skipping')
+                    #print(f'Duplicate file name: {new_stem}, skipping')
                     continue
                 file_info_path_object = file_info_path_object.with_stem(f'{file_info_path_object.parent}_{new_stem}')
                 lawbot_file_workspace_folder = lawbot_workspace_documents_folder.joinpath(file_info_path_object.stem)
@@ -66,17 +65,17 @@ class LawbotWorkspace:
 
 def create_document_page_images(documentPath: Path, outputFolderPath: Path):
     print(f'Creating page images for document: {documentPath.stem}')
-    pdf_doc = pymupdf.open(documentPath)
-    page_count = pdf_doc.page_count
-    for page_index in range(page_count):
-        page_num = page_index + 1
-        page_image_path = outputFolderPath.joinpath(f'page_{page_num}').with_suffix('.png')
-        if not page_image_path.exists():
-            page = pdf_doc.load_page(page_index)
-            get_pixmap(page).save(page_image_path)
-        else:
-            print(f'Page {page_num} image already exists, skipping.')
-        print_progress_bar(page_num, page_count)
+    with pymupdf.open(documentPath) as pdf_doc:
+        page_count = pdf_doc.page_count
+        for page_index in range(page_count):
+            page_num = page_index + 1
+            page_image_path = outputFolderPath.joinpath(f'page_{page_num}').with_suffix('.png')
+            if not page_image_path.exists():
+                page = pdf_doc.load_page(page_index)
+                get_pixmap(page).save(page_image_path)
+            else:
+                print(f'Page {page_num} image already exists, skipping.')
+            print_progress_bar(page_num, page_count)
 
 def clean_page(imagePath: Path, confidence: float = 0.08):
     modelId = os.getenv('ROBOFLOW_MODEL_ID')
