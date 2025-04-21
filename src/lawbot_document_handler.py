@@ -1,8 +1,10 @@
 import os
+import shutil
+import json
 import numpy as np
 import pymupdf
 from pymupdf.utils import get_pixmap
-from typing import Literal
+from typing import Literal, TypedDict
 from utils import print_progress_bar
 from pathlib import Path
 from zipfile import ZipFile
@@ -19,63 +21,187 @@ from PIL import Image
 
 load_dotenv()
 
+class LawbotDocumentMetadata(TypedDict):
+    category: str
+    originalName: str
+    simpleName: str
+
 class LawbotWorkspace:
-    workspace_path: Path
+    """
+    Attributes:
+        workspacePath: Folder path where actions on documents will occur within (some operations delete this folder, so avoid changing if possible)
+        workspaceMetadataPath: File path where metadata.json file is expected to be
+        documentSource: Location to where documents are (Currently expected to be a .zip file)
+        workspaceMetadata: Metadata of the documents
+    """
+    _documentSource: Path
+    _workspacePath: Path = Path('./lawbot_workspace')
+    _workspaceMetadataPath: Path = _workspacePath.joinpath('metadata.json')
+    _workspaceMetadata: list[LawbotDocumentMetadata]
 
-    def __init__(self, filePath: Path = Path('./lawbot_workspace')):
-        self.workspace_path = filePath
+    def __init__(self, source: Path):
+        self._documentSource = source
 
-    def prep_workspace_from_zip(self, zipPath: Path):
-        if not self.workspace_path.exists():
-            print(f'Creating workspace: {self.workspace_path.absolute()}')
-            self.workspace_path.mkdir()
-            lawbot_workspace_documents_folder = self.workspace_path.joinpath('documents')
-            lawbot_workspace_documents_folder.mkdir()
-            zip_file = ZipFile(zipPath, 'r')
-            zip_documents = zip_file.filelist
-            zip_documents_count = len(zip_documents)
-            print('Copying documents to workspace')
-            added_file_names = []
-            for i, file_info in enumerate(zip_documents):
-                lawbot_file_source = zip_file.open(file_info, 'r')
-                file_info_path_object = Path(file_info.filename)
+    def prep_workspace(self):
+        if self._workspacePath.exists():
+            shutil.rmtree(self._workspacePath)
+        self._workspacePath.mkdir()
+
+        with ZipFile(self._documentSource, 'r') as zipFileData:
+            zipDocuments = zipFileData.filelist
+            zipDocumentsCount = len(zipDocuments)
+            extractedFiles: list[str] = []
+            extractedMetadata: list[LawbotDocumentMetadata] = []
+            duplicateFilesCountDictionary: dict[str, int] = {}
+            corruptedFiles: list[str] = []
+            pageCount = 0
+            for i, zipFileInfo in enumerate(zipDocuments):
+                zipFilePath = Path(zipFileInfo.filename)
                 #https://www.mtu.edu/umc/services/websites/writing/characters-avoid/
                 #replace a sequence of 2 or more '.' with just one
-                new_stem = re.sub(r'\.{2,}', '.', file_info_path_object.stem)
+                originalZipfileName = zipFilePath.stem
+                normalizedName = re.sub(r'\.{2,}', '.', originalZipfileName)
                 #replace if ends with number between brackets, indicating duplicate
-                new_stem = re.sub(r'\(\d+\)$', '', new_stem)
+                normalizedName = re.sub(r'\(\d+\)$', '', normalizedName)
                 #strip because some names ended with white space
-                new_stem = new_stem.strip()
-                if new_stem in added_file_names:
-                    #print(f'Duplicate file name: {new_stem}, skipping')
+                normalizedName = normalizedName.strip()
+                if normalizedName in extractedFiles:
+                    if normalizedName in duplicateFilesCountDictionary:
+                        fileDupCount = duplicateFilesCountDictionary[normalizedName]
+                    else:
+                        fileDupCount = 0
+                    duplicateFilesCountDictionary[normalizedName] = fileDupCount + 1
                     continue
-                file_info_path_object = file_info_path_object.with_stem(f'{file_info_path_object.parent}_{new_stem}')
-                lawbot_file_workspace_folder = lawbot_workspace_documents_folder.joinpath(file_info_path_object.stem)
-                lawbot_file_workspace_folder.mkdir()
-                lawbot_file_target_path = lawbot_file_workspace_folder.joinpath(file_info_path_object.name)
-                file = lawbot_file_target_path.open('wb')
-                file.write(lawbot_file_source.read())
-                image_folder_path = lawbot_file_workspace_folder.joinpath('page_images')
-                image_folder_path.mkdir()
-                create_document_page_images(lawbot_file_target_path, image_folder_path)
-                added_file_names.append(new_stem)
-                print_progress_bar(i+1, zip_documents_count)
-        else:
-            print('Lawbot workspace already exists, skipping workspace creation')
+                with pymupdf.open(stream=zipFileData.read(zipFileInfo)) as extractedDocument:
+                    if extractedDocument.is_repaired:
+                        corruptedFiles.append(normalizedName)
+                        continue
+                    pageCount = pageCount + extractedDocument.page_count
 
-def create_document_page_images(documentPath: Path, outputFolderPath: Path):
-    print(f'Creating page images for document: {documentPath.stem}')
-    with pymupdf.open(documentPath) as pdf_doc:
-        page_count = pdf_doc.page_count
-        for page_index in range(page_count):
-            page_num = page_index + 1
-            page_image_path = outputFolderPath.joinpath(f'page_{page_num}').with_suffix('.png')
-            if not page_image_path.exists():
-                page = pdf_doc.load_page(page_index)
-                get_pixmap(page).save(page_image_path)
+                #with the presumption that all the document filenames are in the format of 'folder_name/file_name'
+                #where folder_name is the document's category
+                metaData: LawbotDocumentMetadata = {
+                    'category': zipFilePath.parent.name,
+                    'originalName': originalZipfileName,
+                    'simpleName': str(i+1),
+                }
+
+                extractedMetadata.append(metaData)
+                extractedFiles.append(normalizedName)
+                print_progress_bar(i+1, zipDocumentsCount)
+
+        extractedFilesCount = len(extractedFiles)
+        duplicateFilesCount = sum(duplicateFilesCountDictionary.values())
+        corruptedFilesCount = len(corruptedFiles)
+        rejectedFilesCount = duplicateFilesCount + corruptedFilesCount
+
+        json.dump(extractedMetadata, self._workspaceMetadataPath.open("w"), indent=4)
+        self._workspaceMetadata = extractedMetadata
+        
+        print(f"Created a metadata file at {self._workspaceMetadataPath}.")
+        print("Please give each entry of that file a unique simpleName.")
+        print("For convenience, each entry has a unique number in string form\n")
+
+        print("Summary:")
+        print(f"Total files in zip: {zipDocumentsCount:,}")
+        print(f"Total files rejected: {rejectedFilesCount:,}")
+        print(f"\tTotal duplicate files: {duplicateFilesCount:,}")
+        print(f"\tTotal corrupted files: {corruptedFilesCount:,}")
+        print(f"Total files extracted: {extractedFilesCount:,}")
+        print(f"\tTotal pages: {pageCount:,}")
+
+        #https://azure.microsoft.com/en-us/pricing/details/ai-document-intelligence/
+        docIntelPagePriceRate = 1000 #as in 'is priced per x'
+        docIntelReadRate_millAndUnder = 1.5 / docIntelPagePriceRate
+        docIntelReadRate_overMill = 0.6 / docIntelPagePriceRate
+        docIntelLayoutRate = 10 / docIntelPagePriceRate
+        
+        if pageCount <= 1_000_000:
+            docIntelReadPrice = pageCount * docIntelReadRate_millAndUnder
+        else:
+            docIntelReadPrice_mill = 1_000_000 * docIntelReadRate_millAndUnder
+            pageCount_overMill = pageCount - 1_000_000
+            docIntelReadPrice_overMill = pageCount_overMill * docIntelReadRate_overMill
+            docIntelReadPrice = docIntelReadPrice_mill + docIntelReadPrice_overMill
+
+        docIntelLayoutPrice = pageCount * docIntelLayoutRate
+
+        print(f"\nApproximate Azure Document Intelligence costs:")
+        print(f"\tRead: ${docIntelReadPrice:{',.2f'}}")
+        print(f"\tLayout (Markdown): ${docIntelLayoutPrice:{',.2f'}}")
+
+    """
+    Creates in-memory representation of metadata.json
+    """
+    def load_metadata(self):
+        metadata: list[LawbotDocumentMetadata] = json.load(self._workspaceMetadataPath.open('r'))
+        if (validate_lawbot_metadata(metadata)):
+            self._workspaceMetadata = metadata
+
+    """
+    Creates folder for document within workspace
+    Args:
+        simpleName: The document to load, uses the simpleName property of LawbotDocumentMetadata from metadata.json
+    """
+    def load_doc_folder(self, simpleName: str):
+        with ZipFile(self._documentSource, 'r') as zipFileData:
+            metadata = next((metadata for metadata in self._workspaceMetadata if metadata['simpleName'] == simpleName), None)
+            if metadata:
+                zipfilePath = f'{metadata["category"]}/{metadata["originalName"]}.pdf'
+                zipInfo = next((info for info in zipFileData.filelist if zipfilePath == info.filename), None)
+                if zipInfo:
+                    folder = self._workspacePath.joinpath(simpleName)
+                    if not folder.exists():
+                        folder.mkdir()
+                        fileBytes = zipFileData.read(zipInfo)
+                        with pymupdf.open(stream=fileBytes) as document:
+                            document.save(folder.joinpath(simpleName).with_suffix('.pdf'))
+                            imageFolder = folder.joinpath("page_images")
+                            imageFolder.mkdir()
+                            for pageIndex in range(document.page_count):
+                                pageNum = pageIndex + 1
+                                pageImagePath = imageFolder.joinpath(f'page_{pageNum}').with_suffix('.png')
+                                page = document.load_page(pageIndex)
+                                get_pixmap(page).save(pageImagePath)
+                    else:
+                        print("Folder already exists")
+                else:
+                    print("Document does not exit in zip file")
             else:
-                print(f'Page {page_num} image already exists, skipping.')
-            print_progress_bar(page_num, page_count)
+                print(f"Could not find metadata with simpleName: {simpleName}")
+
+
+def validate_lawbot_metadata(lawBotMetadata: list[LawbotDocumentMetadata]):
+    simpleNameCountDictionary: dict[str, int] = {}
+    
+    for _, docMetaData in enumerate(lawBotMetadata):
+        simpleName = docMetaData['simpleName']
+        if simpleName in simpleNameCountDictionary:
+            nameCount = simpleNameCountDictionary[simpleName] + 1
+        else:
+            nameCount = 1
+        simpleNameCountDictionary[simpleName] = nameCount
+    
+    hasEmptySimpleName = "" in simpleNameCountDictionary
+    nonUniqueSimpleNames = [key for (key, count) in simpleNameCountDictionary.items() if key != "" and count > 1]
+    hasNonUniqueSimpleName = len(nonUniqueSimpleNames) >= 1
+
+    isInvalid = hasEmptySimpleName or hasNonUniqueSimpleName
+    
+    if isInvalid:
+        print('There are invalid values in document metadata:')
+        if hasEmptySimpleName:
+            missingSimpleNameDocs = [docMetadata["originalName"] for docMetadata in lawBotMetadata if docMetadata["simpleName"] == ""]
+            print("No simple name:")
+            for missing in missingSimpleNameDocs:
+                print(f"\t{missing}")
+        if hasNonUniqueSimpleName:
+            nonUniqueSimpleNameDocs = [docMetadata["originalName"] for docMetadata in lawBotMetadata if docMetadata["simpleName"] in nonUniqueSimpleNames]
+            print("Non-unique simple name:")
+            for name in nonUniqueSimpleNameDocs:
+                print(f"\t{name}")
+    
+    return not isInvalid
 
 def clean_page(imagePath: Path, confidence: float = 0.08):
     modelId = os.getenv('ROBOFLOW_MODEL_ID')
@@ -118,10 +244,4 @@ def document_intelligence_extract(filePath: Path, outputFormat: Literal["text", 
         model, fileBinary, output_content_format=outputFormat,
     )
 
-    return poller.result()    
-
-def get_all_pdf_file_paths_from_directory(directoryPath: str):
-    pathObj = Path(directoryPath)
-    globList = list(pathObj.glob('*.pdf'))
-    filePaths = [x.as_posix() for x in globList]
-    return filePaths
+    return poller.result()

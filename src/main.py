@@ -5,10 +5,15 @@ from lawbot_document_handler import LawbotWorkspace, clean_page, document_intell
 workspacePath = Path('./lawbot_workspace')
 zipPath = Path('./non_release/acts of parliment.zip')
 
-workspace = LawbotWorkspace(workspacePath)
-workspace.prep_workspace_from_zip(zipPath)
+workspace = LawbotWorkspace(zipPath)
+workspace.prep_workspace()
 
-imgPath = Path('./lawbot_workspace/documents/revision_Water Supply Act/page_images/page_1.png')
+#document simpleName can be updated by changing the simpleName property of the metadata.json created by workspace.prep_workspace()
+documentSimpleName = '18'
+
+workspace.load_doc_folder(documentSimpleName)
+
+imgPath = Path(f'./lawbot_workspace/{documentSimpleName}/page_images/page_1.png')
 cleanedImgPath = imgPath.with_stem(imgPath.stem+'_cleaned')
 
 cleanedImage = clean_page(
